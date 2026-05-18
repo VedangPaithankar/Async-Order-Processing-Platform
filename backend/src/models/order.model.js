@@ -1,0 +1,10 @@
+const OrderStatus = {
+  PLACED: 'PLACED',
+  PROCESSING: 'PROCESSING',
+  SHIPPED: 'SHIPPED',
+  OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
+  DELIVERED: 'DELIVERED',
+  FAILED: 'FAILED'
+};
+
+module.exports = { OrderStatus }; 
