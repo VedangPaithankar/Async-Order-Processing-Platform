@@ -54,6 +54,7 @@ const orderWorker = new Worker(
 
   {
     connection: redisConnection,
+    concurrency: 5
   },
 );
 
