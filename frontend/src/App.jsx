@@ -155,6 +155,14 @@ function App() {
   const [confirmation, setConfirmation] = useState(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showPrototypeNotice, setShowPrototypeNotice] = useState(
+    () => !localStorage.getItem("brewflow-prototype-notice-dismissed"),
+  );
+
+  const dismissPrototypeNotice = () => {
+    localStorage.setItem("brewflow-prototype-notice-dismissed", "true");
+    setShowPrototypeNotice(false);
+  };
 
   useEffect(() => {
     api
@@ -445,6 +453,42 @@ function App() {
 
   return (
     <main className="min-h-screen bg-[#FAFAFA] text-[#2A1B18]">
+      {showPrototypeNotice && (
+        <div className="fixed inset-0 z-[60] grid place-items-end bg-black/45 p-0 sm:place-items-center sm:p-4">
+          <div className="w-full rounded-t-2xl bg-white p-5 shadow-2xl sm:max-w-sm sm:rounded-lg">
+            <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#BF5F45]">
+              Heads up
+            </p>
+            <h2 className="mt-1 font-serif text-2xl font-bold text-[#3E2723]">
+              This is a learning prototype
+            </h2>
+            <p className="mt-3 text-sm text-[#5D4037]">
+              BrewFlow is a portfolio project built to demonstrate backend
+              architecture — queues, workers, retries, and a real cloud
+              deployment. It's not a real cafe, and no real payments are
+              processed.
+            </p>
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <a
+                className="text-sm font-bold text-[#5D4037] underline underline-offset-2"
+                href="https://github.com/VedangPaithankar/Async-Order-Processing-Platform"
+                rel="noreferrer"
+                target="_blank"
+              >
+                View the code
+              </a>
+              <button
+                className="rounded-full bg-[#3E2723] px-5 py-2 text-sm font-bold text-white"
+                onClick={dismissPrototypeNotice}
+                type="button"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="sticky top-0 z-30 border-b border-[#eaded9] bg-[#FAFAFA]/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
           <a className="font-serif text-xl font-bold text-[#3E2723]" href="#home">
