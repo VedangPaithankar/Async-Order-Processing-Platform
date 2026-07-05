@@ -6,10 +6,22 @@ const authRoutes = require("./src/auth/auth.routes");
 const orderRoutes = require("./src/routes/order.routes");
 const errorMiddleware = require("./src/middleware/error.middleware");
 const metricsRoutes = require("./src/routes/metrics.routes");
+const menuRoutes = require("./src/routes/menu.routes");
+
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
 
     credentials: true,
   }),
@@ -17,7 +29,16 @@ app.use(
 
 app.use(express.json());
 
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "brewflow-api",
+  });
+});
+
 app.use("/auth", authRoutes);
+
+app.use("/menu", menuRoutes);
 
 app.use("/orders", orderRoutes);
 

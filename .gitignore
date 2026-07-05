@@ -23,3 +23,8 @@ postgres_data/
 # IDE
 .vscode/
 .idea/
+
+# Personal/private files not meant for the public repo
+VedangPaithankarResume.pdf
+context/
+images/

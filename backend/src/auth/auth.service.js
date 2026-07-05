@@ -25,10 +25,26 @@ exports.signup = async ({ email, password, name }) => {
     name,
   });
 
+  const token = jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "1d",
+    },
+  );
+
   return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    },
+    token,
   };
 };
 
@@ -66,6 +82,12 @@ exports.login = async ({ email, password }) => {
   );
 
   return {
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    },
     token,
   };
 };
