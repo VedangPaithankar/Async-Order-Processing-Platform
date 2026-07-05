@@ -4,9 +4,11 @@ services:
     runtime: node
     plan: free
     rootDir: backend
+    # preDeployCommand needs a paid plan. DATABASE_URL is guaranteed to be
+    # populated at runtime, so run the migration right before boot instead
+    # (prisma migrate deploy is idempotent — a no-op if nothing is pending).
     buildCommand: npm ci && npm run prisma:generate
-    preDeployCommand: npm run prisma:migrate
-    startCommand: npm start
+    startCommand: npm run prisma:migrate && npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
