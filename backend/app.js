@@ -7,6 +7,7 @@ const orderRoutes = require("./src/routes/order.routes");
 const errorMiddleware = require("./src/middleware/error.middleware");
 const metricsRoutes = require("./src/routes/metrics.routes");
 const menuRoutes = require("./src/routes/menu.routes");
+const healthRoutes = require("./src/routes/health.routes");
 
 const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173")
   .split(",")
@@ -29,12 +30,7 @@ app.use(
 
 app.use(express.json());
 
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    service: "brewflow-api",
-  });
-});
+app.use("/health", healthRoutes);
 
 app.use("/auth", authRoutes);
 
