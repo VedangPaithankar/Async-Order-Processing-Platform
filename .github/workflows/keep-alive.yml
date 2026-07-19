@@ -1,0 +1,27 @@
+name: Keep BrewFlow API warm
+
+# Render's free web-service tier spins the instance down after 15 minutes
+# of inactivity, and the next request pays a ~30-60s cold-boot penalty.
+# This pings /health often enough that it never gets the chance to sleep.
+#
+# Trade-off: Render's free tier gives 750 instance-hours/month per
+# workspace. Keeping this one service warm 24/7 uses ~720-744 of those
+# hours, so there's little to no budget left for any other free service
+# in the same Render workspace this month.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 https://brewflow-api-wpek.onrender.com/health)
+          echo "Health check returned HTTP $status"
+          if [ "$status" != "200" ]; then
+            echo "::warning::brewflow-api health check returned $status"
+          fi
