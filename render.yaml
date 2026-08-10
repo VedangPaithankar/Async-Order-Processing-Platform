@@ -23,10 +23,12 @@ services:
       # own container.
       - key: RUN_WORKER_INLINE
         value: "true"
+      # Render's free Postgres expires 30 days after creation and gets
+      # suspended. Using an external free provider (Neon) instead, which
+      # has no expiry — set the actual connection string manually in the
+      # Render dashboard (Environment tab), not here.
       - key: DATABASE_URL
-        fromDatabase:
-          name: brewflow-postgres
-          property: connectionString
+        sync: false
       - key: REDIS_HOST
         fromService:
           type: keyvalue
@@ -44,8 +46,6 @@ services:
     plan: free
     maxmemoryPolicy: noeviction
 
-databases:
-  - name: brewflow-postgres
-    databaseName: brewflow
-    user: brewflow_user
-    plan: free
+# Postgres is no longer Render-managed (see DATABASE_URL above) — Render's
+# free Postgres expires after 30 days, so the database now lives on Neon
+# (neon.tech), which has a permanent free tier.
