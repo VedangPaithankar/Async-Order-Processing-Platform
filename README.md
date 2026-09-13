@@ -1,263 +1,75 @@
-# Async Order Processing Platform
+# BrewFlow — Async Order Processing Platform
 
-A full-stack asynchronous order processing system demonstrating production backend engineering concepts including queue-based processing, fault tolerance, retries, idempotency, JWT authentication, and Dockerized deployment.
+A full-stack cafe ordering system built to demonstrate production backend engineering, not just CRUD: queue-based async processing, fault tolerance with retries and a dead-letter queue, idempotent workers, JWT auth, and a Dockerized deployment. "BrewFlow" is the product skin (The Daily Grind); the engineering underneath is a general-purpose async order pipeline.
+
+**Live:** [brewflow-ind.vercel.app](https://brewflow-ind.vercel.app) (frontend) · [brewflow-api-wpek.onrender.com](https://brewflow-api-wpek.onrender.com) (API, free-tier Render — first request may take a few seconds to wake up) · [`/health`](https://brewflow-api-wpek.onrender.com/health) (live Postgres + Redis check)
 
 ---
 
-# Architecture
+## Architecture
 
 ![Architecture](./static/Architecture.png)
 
----
+```mermaid
+flowchart LR
+    U[User] -->|HTTP + JWT| FE[React Frontend]
+    FE --> API[Express Backend]
+    API -->|1. store order| PG[(PostgreSQL)]
+    API -->|2. publish job| Q[(Redis / BullMQ)]
+    API -->|3. return 202| U
+    W[Background Worker] -->|pull job| Q
+    W -->|check idempotency,<br/>process, update status| PG
+    W -.->|permanent failure| DLQ[(Dead Letter Queue)]
+```
 
-# Overview
-
-This project simulates a real-world order processing platform where user requests are immediately accepted while expensive work is processed asynchronously in the background.
-
-The system is designed around reliability and scalability principles:
-
-- JWT Authentication
-- Queue-based architecture
-- Background workers
-- Retry mechanism
-- Idempotent processing
-- Dead Letter Queue
-- Structured logging
-- Dockerized deployment
+The API responds as soon as the order is durably stored and the job is queued — it never waits on the actual order processing. That work happens in the background worker, decoupled from the request/response cycle.
 
 ---
 
-# High Level Flow
+## Why this exists
 
-## Foreground Flow
+Most portfolio CRUD apps stop at "save to database, return 200." BrewFlow is built around the reliability problems that show up the moment you take work off the request path: what happens when a worker crashes mid-job, when the same job gets delivered twice, when a downstream call times out versus genuinely fails — and it answers each of those with a real mechanism (below), not just a comment.
 
-```text
-User
-    ↓
-React Frontend
-    ↓
-HTTP + JWT
-    ↓
-Express Backend
-    ↓
-Store Order in PostgreSQL
-    ↓
-Publish Job to Queue
-    ↓
-Return Success Response
-```
+## Reliability features
 
-The API responds immediately without waiting for order processing.
+**Order-before-queue ordering.** The order is written to Postgres *before* the job is published — if a job could exist in the queue with no matching order row, a worker picking it up would process an order that doesn't exist. Postgres is the source of truth; the queue is just a trigger.
 
----
+**Retry with exponential backoff.** Transient failures (DB timeout, network blip, temporary service unavailability) retry automatically — 2s, 4s, 8s — instead of failing the job outright.
 
-## Background Flow
+**Failure classification.** Not every failure deserves a retry: invalid order data, a missing user, or a corrupted payload fail fast instead of burning through retry attempts on something that will never succeed.
 
-```text
-Worker
-    ↓
-Pull Job from Queue
-    ↓
-Check Idempotency
-    ↓
-Process Order
-```
+**Idempotent workers.** Before processing, a worker checks the order's current state and skips if it's already been handled — protects against duplicate processing, duplicate payments, duplicate notifications if a job is ever delivered more than once (queues generally guarantee *at-least-once* delivery, not exactly-once).
 
-Successful execution:
+**Dead Letter Queue.** Jobs that exhaust their retries land in a DLQ with the failure reason, retry count, and original job details attached — a recovery candidate for manual review, instead of a silently dropped order.
 
-```text
-PLACED
-    ↓
-PROCESSING
-    ↓
-SHIPPED
-```
+**Structured logging.** Every log line is JSON (`timestamp`, `level`, `message`, `jobId`, `attempt`, …) — built for grepping/aggregating, not just reading in a terminal.
 
-Failure execution:
-
-```text
-Attempt 1
-    ↓
-Attempt 2
-    ↓
-Attempt 3
-    ↓
-FAILED
-    ↓
-Dead Letter Queue
+```mermaid
+flowchart LR
+    A[PLACED] --> B[PROCESSING]
+    B -->|success| C[SHIPPED]
+    B -->|attempt 1 fails| R1[retry, wait 2s]
+    R1 -->|attempt 2 fails| R2[retry, wait 4s]
+    R2 -->|attempt 3 fails| F[FAILED]
+    F --> DLQ[(Dead Letter Queue)]
 ```
 
 ---
 
-# Architecture Decisions
+## Tech stack
 
-## Why store order before publishing to queue?
+| Layer | Stack |
+|---|---|
+| Frontend | React, Vite, TailwindCSS |
+| Backend | Node.js, Express, Prisma ORM |
+| Database | PostgreSQL (Neon) |
+| Queue | Redis, BullMQ |
+| Infra | Docker, Docker Compose, Render (API) + Vercel (frontend) |
 
-Current flow:
-
-```text
-Store Order
-      ↓
-Publish Job
-      ↓
-Return Success
-```
-
-Reason:
-
-If a job enters the queue before an order exists:
-
-```text
-Queue Job Exists
-Order Record Missing
-```
-
-This creates orphan processing.
-
-PostgreSQL acts as the system source of truth.
-
----
-
-# Reliability Features
-
-## Retry Mechanism
-
-Transient failures automatically retry using exponential backoff:
-
-```text
-Attempt 1
-Wait 2 sec
-
-Attempt 2
-Wait 4 sec
-
-Attempt 3
-Wait 8 sec
-```
-
-Retries help recover from:
-
-- temporary database failures
-- network issues
-- transient service failures
-
----
-
-## Failure Classification
-
-Retryable:
-
-- Database timeout
-- Network failures
-- Temporary service unavailability
-
-Non-retryable:
-
-- Invalid order data
-- Missing user
-- Corrupted payload
-
----
-
-## Idempotency
-
-Workers verify current order state before processing:
-
-```text
-Already processed?
-        ↓
-    Yes → Skip
-    No → Continue
-```
-
-This prevents:
-
-- duplicate processing
-- duplicate payments
-- duplicate notifications
-
----
-
-## Dead Letter Queue
-
-Permanently failed jobs are moved into a Dead Letter Queue.
-
-Stored information:
-
-- Job details
-- Failure reason
-- Retry count
-- Recovery candidate
-
-This prevents silent failures.
-
----
-
-## Structured Logging
-
-Example:
-
-```json
-{
-  "timestamp":"2026-05-18T12:00:00Z",
-  "level":"ERROR",
-  "message":"Order processing failed",
-  "jobId":"123",
-  "attempt":2
-}
-```
-
-Logs improve:
-
-- debugging
-- monitoring
-- operational visibility
-
----
-
-# Tech Stack
-
-## Frontend
-
-- React
-- Vite
-- TailwindCSS
-
----
-
-## Backend
-
-- Node.js
-- Express
-- Prisma ORM
-
----
-
-## Database
-
-- PostgreSQL
-
----
-
-## Queue System
-
-- Redis
-- BullMQ
-
----
-
-## Infrastructure
-
-- Docker
-- Docker Compose
-
----
-
-# Project Structure
+## Project structure
 
 ```text
 backend/
-
 ├── src
 │   ├── auth
 │   ├── controllers
@@ -269,102 +81,38 @@ backend/
 │   ├── queues
 │   ├── logger
 │   └── utils
-│
 ├── prisma
-│
 └── server.js
 
-
 frontend/
-
-├── src
-│   ├── pages
-│   ├── components
-│   ├── services
-│   └── App.jsx
+└── src
+    ├── pages
+    ├── components
+    ├── services
+    └── App.jsx
 ```
 
----
-
-# Running the Project
-
-Start all services:
+## Running it locally
 
 ```bash
 docker compose up --build
+docker compose exec backend npx prisma db push   # apply schema
 ```
 
-Apply database schema:
+Frontend: `http://localhost:5173` · Backend: `http://localhost:3000`
 
-```bash
-docker compose exec backend npx prisma db push
-```
+## Current features
 
-Open application:
+- **Auth:** signup, login, JWT, protected routes
+- **Orders:** create, dashboard, ownership validation
+- **Async processing:** Redis queue, background worker, retries with exponential backoff
+- **Reliability:** dead letter queue, idempotency, failure classification, structured logging
+- **Infra:** fully Dockerized, PostgreSQL + Redis
 
-```text
-Frontend:
-http://localhost:5173
+## Roadmap (not yet built)
 
-Backend:
-http://localhost:3000
-```
+Multiple concurrent workers, race-condition/optimistic-locking handling, metrics + monitoring, WebSocket order-status push, horizontal scaling, distributed tracing.
 
 ---
 
-# Current Features
-
-Authentication:
-
-- Signup
-- Login
-- JWT Authentication
-- Protected Routes
-
-Orders:
-
-- Create Order
-- Order Dashboard
-- Ownership Validation
-
-Async Processing:
-
-- Redis Queue
-- Background Worker
-- Retry Mechanism
-- Exponential Backoff
-
-Reliability:
-
-- Dead Letter Queue
-- Idempotency
-- Failure Classification
-- Structured Logging
-
-Infrastructure:
-
-- Dockerized deployment
-- PostgreSQL
-- Redis
-
----
-
-# Future Improvements
-
-Planned Phase 3 work:
-
-- Multiple workers
-- Concurrency handling
-- Race condition handling
-- Optimistic locking
-- Metrics collection
-- Monitoring
-- WebSockets
-- Horizontal scaling
-- Distributed tracing
-
----
-
-# Author
-
-Vedang Paithankar
+[Vedang Paithankar](https://github.com/VedangPaithankar)
